@@ -80,7 +80,9 @@ export function RoutePanel({ route }: { route: RouteItem }) {
           flexWrap: "wrap",
         }}
       >
-        <span style={{ fontSize: 10, color: "#334155", marginRight: 4 }}>TABLES:</span>
+        <span style={{ fontSize: 10, color: "#334155", marginRight: 4 }}>
+          {route.tables.some((t) => t.startsWith("node:")) ? "MODULES:" : "TABLES:"}
+        </span>
         {route.tables.map((t) => {
           const color = TABLE_COLOR[t] ?? "#94A3B8";
           return (

@@ -39,6 +39,251 @@ export const TABLE_COLOR: Record<string, string> = {
   cart_items: "#DB2777",
   reviews: "#DB2777",
   coupons: "#DB2777",
+  // TLS "modules" — not DB tables, used as concept tags
+  "node:https": "#0EA5E9",
+  "node:tls": "#0EA5E9",
+  "node:crypto": "#A78BFA",
+  "node:fs": "#F472B6",
+};
+
+// ─── Node.js HTTPS / TLS route group ───────────────────────────────────────
+export const HTTPS_GROUP: RouteGroup = {
+  group: "Node HTTPS / TLS",
+  color: "#0EA5E9",
+  items: [
+    {
+      method: "POST",
+      path: "https.createServer (PEM)",
+      desc: "Create an HTTPS server using PEM key + cert files",
+      tables: ["node:https", "node:fs"],
+      code: `const https = require('node:https');
+const fs    = require('node:fs');
+
+const options = {
+  key:  fs.readFileSync('private-key.pem'),
+  cert: fs.readFileSync('certificate.pem'),
+};
+
+// Generate self-signed cert for local dev:
+// openssl req -x509 -newkey rsa:2048 -nodes -sha256 \\
+//   -subj '/CN=localhost' \\
+//   -keyout private-key.pem -out certificate.pem
+
+https.createServer(options, (req, res) => {
+  res.writeHead(200);
+  res.end('hello world\\n');
+}).listen(8000);`,
+    },
+    {
+      method: "POST",
+      path: "https.createServer (PFX)",
+      desc: "Create an HTTPS server using a PKCS#12 (.pfx) bundle",
+      tables: ["node:https", "node:fs"],
+      code: `const https = require('node:https');
+const fs    = require('node:fs');
+
+const options = {
+  pfx:        fs.readFileSync('test_cert.pfx'),
+  passphrase: 'sample',
+};
+
+// Build the .pfx bundle from PEM files:
+// openssl pkcs12 -certpbe AES-256-CBC -export \\
+//   -out test_cert.pfx \\
+//   -inkey private-key.pem -in certificate.pem \\
+//   -passout pass:sample
+
+https.createServer(options, (req, res) => {
+  res.writeHead(200);
+  res.end('hello world\\n');
+}).listen(8000);`,
+    },
+    {
+      method: "GET",
+      path: "https.get (shorthand)",
+      desc: "Simple GET request using the https.get() shorthand",
+      tables: ["node:https"],
+      code: `const https = require('node:https');
+
+// https.get is a convenience wrapper — no req.end() needed
+https.get('https://encrypted.google.com/', (res) => {
+  console.log('statusCode:', res.statusCode);
+  console.log('headers:',    res.headers);
+
+  res.on('data', (d) => {
+    process.stdout.write(d);
+  });
+}).on('error', (e) => {
+  console.error(e);
+});`,
+    },
+    {
+      method: "GET",
+      path: "https.request (full options)",
+      desc: "Full HTTPS GET using https.request() with explicit options",
+      tables: ["node:https"],
+      code: `const https = require('node:https');
+
+const options = {
+  hostname: 'encrypted.google.com',
+  port:     443,
+  path:     '/',
+  method:   'GET',
+};
+
+const req = https.request(options, (res) => {
+  console.log('statusCode:', res.statusCode);
+  console.log('headers:',    res.headers);
+
+  res.on('data', (d) => {
+    process.stdout.write(d);
+  });
+});
+
+req.on('error', (e) => {
+  console.error(e);
+});
+
+// Unlike https.get(), you must call req.end() manually
+req.end();`,
+    },
+    {
+      method: "GET",
+      path: "https.request (client cert + Agent)",
+      desc: "Authenticate with a client certificate via https.Agent",
+      tables: ["node:https", "node:fs"],
+      code: `const https = require('node:https');
+const fs    = require('node:fs');
+
+// Attach the client cert to an Agent so it's reused across requests
+const options = {
+  hostname: 'encrypted.google.com',
+  port:     443,
+  path:     '/',
+  method:   'GET',
+  key:      fs.readFileSync('private-key.pem'),
+  cert:     fs.readFileSync('certificate.pem'),
+};
+
+// new https.Agent caches TLS sessions for the same host:port
+options.agent = new https.Agent(options);
+
+const req = https.request(options, (res) => {
+  // handle response...
+});`,
+    },
+    {
+      method: "GET",
+      path: "https.request (agent: false)",
+      desc: "Bypass the default connection pool — one-off TLS socket",
+      tables: ["node:https", "node:fs"],
+      code: `const https = require('node:https');
+const fs    = require('node:fs');
+
+// agent: false creates a fresh socket for this single request.
+// Useful when you need per-request cert or want to avoid pooling.
+const options = {
+  hostname: 'encrypted.google.com',
+  port:     443,
+  path:     '/',
+  method:   'GET',
+  key:      fs.readFileSync('private-key.pem'),
+  cert:     fs.readFileSync('certificate.pem'),
+  agent:    false,   // ← no connection reuse
+};
+
+const req = https.request(options, (res) => {
+  // handle response...
+});`,
+    },
+    {
+      method: "GET",
+      path: "Certificate pinning (sha256)",
+      desc: "Pin a server's public key & exact cert fingerprint via checkServerIdentity",
+      tables: ["node:tls", "node:https", "node:crypto"],
+      code: `const tls    = require('node:tls');
+const https  = require('node:https');
+const crypto = require('node:crypto');
+
+function sha256(s) {
+  return crypto.createHash('sha256').update(s).digest('base64');
+}
+
+const options = {
+  hostname: 'github.com',
+  port:     443,
+  path:     '/',
+  method:   'GET',
+
+  checkServerIdentity(host, cert) {
+    // 1. Standard hostname check first
+    const err = tls.checkServerIdentity(host, cert);
+    if (err) return err;
+
+    // 2. Pin the public key (HPKP-style pin-sha256)
+    const pubkey256 = 'SIXvRyDmBJSgatgTQRGbInBaAK+hZOQ18UmrSwnDlK8=';
+    if (sha256(cert.pubkey) !== pubkey256) {
+      return new Error(
+        \`Certificate verification error: The public key of '\${cert.subject.CN}' \` +
+        'does not match our pinned fingerprint'
+      );
+    }
+
+    // 3. Pin the exact leaf certificate SHA-256 fingerprint
+    const cert256 =
+      'FD:6E:9B:0E:F3:98:BC:D9:04:C3:B2:EC:16:7A:7B:' +
+      '0F:DA:72:01:C9:03:C5:3A:6A:6A:E5:D0:41:43:63:EF:65';
+    if (cert.fingerprint256 !== cert256) {
+      return new Error(
+        \`Certificate verification error: The certificate of '\${cert.subject.CN}' \` +
+        'does not match our pinned fingerprint'
+      );
+    }
+
+    // Walk the chain for informational logging
+    do {
+      console.log('Subject Common Name:', cert.subject.CN);
+      console.log('  Certificate SHA256 fingerprint:', cert.fingerprint256);
+      console.log('  Public key pin-sha256:', sha256(cert.pubkey));
+      cert = cert.issuerCertificate;
+    } while (cert.fingerprint256 !== cert.issuerCertificate?.fingerprint256);
+  },
+};
+
+options.agent = new https.Agent(options);
+
+const req = https.request(options, (res) => {
+  console.log('All OK. Server matched our pinned cert or public key');
+  console.log('statusCode:', res.statusCode);
+  res.on('data', () => {});
+});
+
+req.on('error', (e) => { console.error(e.message); });
+req.end();`,
+    },
+    {
+      method: "GET",
+      path: "TLS keylog (SSLKEYLOGFILE)",
+      desc: "Capture TLS session keys to a file for Wireshark decryption",
+      tables: ["node:https", "node:fs"],
+      code: `// Dynamically import https (ESM-safe pattern)
+let https;
+try {
+  https = await import('node:https');
+} catch (err) {
+  console.error('https support is disabled!');
+}
+
+// Log TLS session keys so Wireshark can decrypt captures.
+// ⚠️  NEVER do this in production — exposes all encrypted traffic.
+https.globalAgent.on('keylog', (line, tlsSocket) => {
+  fs.appendFileSync('/tmp/ssl-keys.log', line, { mode: 0o600 });
+});
+
+// Then make your request normally:
+// curl -k https://localhost:8000/`,
+    },
+  ],
 };
 
 export const CONCEPTS = [
@@ -49,6 +294,7 @@ export const CONCEPTS = [
 ];
 
 export const ROUTES: RouteGroup[] = [
+  HTTPS_GROUP,
   {
     group: "Auth",
     color: "#3B82F6",
