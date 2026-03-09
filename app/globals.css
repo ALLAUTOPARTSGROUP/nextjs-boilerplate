@@ -16,6 +16,13 @@
   --code-keyword: #c084fc;
   --code-comment: #6b7280;
   --code-base: #cbd5e1;
+  --code-function: #93c5fd;
+  --code-number: #fcd34d;
+  --code-operator: #f472b6;
+  --code-property: #67e8f9;
+  --code-regex: #fbbf24;
+  --line-number: #475569;
+  --line-highlight: rgba(59, 130, 246, 0.08);
 }
 
 @theme inline {
